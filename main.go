@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"log"
 	"math/rand"
-	"net/http"
 	"os"
 
+	"github.com/a-fujii-iij/go_sso_gin/handler"
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/oauth2"
@@ -57,50 +57,13 @@ func main() {
 		Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
 	}
 
+	oidcHandler := handler.NewOIDCHandler(oauthConfig, provider)
+
 	// 認証用のエンドポイント
-	r.GET("/auth", func(c *gin.Context) {
-		state := RandString(16)
-		url := oauthConfig.AuthCodeURL(state)
-		c.Redirect(http.StatusFound, url)
-	})
+	r.GET("/auth", oidcHandler.HandleAuthRequest)
 
 	// コールバック用のエンドポイント
-	r.GET("/auth/callback", func(c *gin.Context) {
-		// エラーハンドリングは省略しています。
-		code := c.Query("code")
-		oauth2Token, err := oauthConfig.Exchange(context.Background(), code)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to exchange token"})
-			return
-		}
-
-		// IDトークンの取得
-		rawIDToken, ok := oauth2Token.Extra("id_token").(string)
-		if !ok {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "No id_token field in oauth2 token"})
-			return
-		}
-
-		// IDトークンの検証
-		idToken, err := provider.Verifier(&oidc.Config{ClientID: config.ClientID}).Verify(context.Background(), rawIDToken)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify ID Token"})
-			return
-		}
-		log.Printf("Authenticated. %+v\n", idToken)
-
-		// IDトークンのクレームを取得
-		var claims struct {
-			Email string `json:"email"`
-			// 他に必要なクレームがあればここに追加します。
-		}
-		if err := idToken.Claims(&claims); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get claims"})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{"email": claims.Email})
-	})
+	r.GET("/auth/callback", oidcHandler.HandleAuthResponse)
 
 	r.Run()
 
