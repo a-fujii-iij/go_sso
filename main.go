@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 
@@ -16,6 +17,16 @@ type OidcConfig struct {
 	ClientID     string `json:"client_id"`
 	ClientSecret string `json:"client_secret"`
 	Issuer       string `json:"issuer"`
+}
+
+const rs3Letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+func RandString(n int) string {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = rs3Letters[int(rand.Int63()%int64(len(rs3Letters)))]
+	}
+	return string(b)
 }
 
 func main() {
@@ -48,7 +59,7 @@ func main() {
 
 	// 認証用のエンドポイント
 	r.GET("/auth", func(c *gin.Context) {
-		state := "random" // 実際にはCSRF対策のためにランダムな値を生成する必要があります。
+		state := RandString(16)
 		url := oauthConfig.AuthCodeURL(state)
 		c.Redirect(http.StatusFound, url)
 	})
@@ -76,6 +87,7 @@ func main() {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify ID Token"})
 			return
 		}
+		log.Printf("Authenticated. %+v\n", idToken)
 
 		// IDトークンのクレームを取得
 		var claims struct {
